@@ -13,6 +13,8 @@
             --text-muted: #aaaaaa; 
             --accent-color: #ff4757; 
             --border-color: #333333; 
+            /* 🔍 댄서 마커 기본 크기 변수 추가 */
+            --dancer-size: 44px;
         }
         body { background-color: var(--bg-color); color: var(--text-color); font-family: sans-serif; margin: 0; padding: 15px; -webkit-text-size-adjust: 100%; }
         .container { max-width: 1200px; margin: 0 auto; }
@@ -45,7 +47,7 @@
         /* 동선 작업실(Workspace) 스타일 */
         .workspace { display: none; background-color: var(--card-bg); border: 2px solid var(--accent-color); border-radius: 12px; padding: 15px; margin-bottom: 30px; }
         .workspace-title { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-color); padding-bottom: 12px; margin-bottom: 15px; gap: 10px; }
-        .workspace-layout { display: flex; gap: 20px; flex-direction: column; } /* 모바일 기본: 세로 배치 */
+        .workspace-layout { display: flex; gap: 20px; flex-direction: column; } 
         .video-side { display: flex; flex-direction: column; gap: 15px; width: 100%; }
         .stage-side { display: flex; flex-direction: column; gap: 15px; width: 100%; }
         
@@ -66,18 +68,21 @@
         .dancer-form input { flex: 1; padding: 8px; border-radius: 6px; border: 1px solid var(--border-color); background: #2d2d2d; color: white; font-size: 0.9rem; }
         .dancer-form .btn-small { flex: none; width: 80px; }
         
-        /* 스테이지 높이를 모바일 환경에 맞춰 살짝 줄임 */
-        .stage-floor { position: relative; width: 100%; height: 340px; background-color: #1a1a1a; border: 2px solid #444; border-radius: 8px; overflow: hidden; box-sizing: border-box; touch-action: none; /* 모바일 브라우저 기본 스크롤 방지 */
+        /* 크기 조절 슬라이더 컨테이너 스타일 */
+        .size-slider-container { display: flex; align-items: center; gap: 8px; background: #2d2d2d; padding: 6px 12px; border-radius: 6px; border: 1px solid var(--border-color); }
+        .size-slider-container span { font-size: 0.8rem; color: var(--text-muted); font-weight: bold; }
+        .size-slider-container input[type="range"] { width: 70px; cursor: pointer; accent-color: var(--accent-color); }
+
+        .stage-floor { position: relative; width: 100%; height: 340px; background-color: #1a1a1a; border: 2px solid #444; border-radius: 8px; overflow: hidden; box-sizing: border-box; touch-action: none; 
             background-image: radial-gradient(#333 15%, transparent 16%), radial-gradient(#333 15%, transparent 16%); background-size: 20px 20px; background-position: 0 0, 10px 10px; }
         .stage-floor::before { content: ''; position: absolute; top: 0; bottom: 0; left: 50%; border-left: 1px dashed rgba(255, 71, 87, 0.4); pointer-events: none; }
         .stage-floor::after { content: ''; position: absolute; left: 0; right: 0; top: 50%; border-top: 1px dashed rgba(255, 71, 87, 0.4); pointer-events: none; }
 
-        /* 댄서 마커 - 모바일 터치를 위해 크기 소폭 확장 및 touch-action 추가 */
-        .dancer-marker { position: absolute; width: 44px; height: 44px; border-radius: 50%; background-color: var(--accent-color); color: white; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 0.85rem; cursor: move; user-select: none; -webkit-user-select: none; box-shadow: 0 4px 10px rgba(0,0,0,0.5); transform: translate(-50%, -50%); border: 2px solid white; touch-action: none; }
+        /* 댄서 마커 - 크기 변수(--dancer-size) 및 폰트 유동 계산식 반영 */
+        .dancer-marker { position: absolute; width: var(--dancer-size); height: var(--dancer-size); border-radius: 50%; background-color: var(--accent-color); color: white; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: calc(var(--dancer-size) * 0.32); cursor: move; user-select: none; -webkit-user-select: none; box-shadow: 0 4px 10px rgba(0,0,0,0.5); transform: translate(-50%, -50%); border: 2px solid white; touch-action: none; }
         .dancer-name-tag { position: absolute; bottom: -22px; white-space: nowrap; background: rgba(0,0,0,0.8); padding: 2px 6px; border-radius: 4px; font-size: 0.7rem; color: #fff; border: 1px solid #444; pointer-events: none; }
         .dancer-delete { position: absolute; top: -4px; right: -4px; width: 18px; height: 18px; background: #fff; color: #000; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; cursor: pointer; font-weight: bold; border: 1px solid #000; z-index: 10; }
 
-        /* 데스크탑 및 태블릿 가로 화면용 미디어 쿼리 (가로 폭이 넓어지면 양옆 배치) */
         @media (min-width: 769px) {
             body { padding: 20px; }
             h1 { font-size: 2.5rem; }
@@ -159,6 +164,12 @@
                 <div class="stage-side">
                     <div class="stage-header">
                         <h3 style="margin:0; font-size:1rem;">🕺 STAGE FLOOR</h3>
+                        
+                        <div class="size-slider-container">
+                            <span>마커 크기</span>
+                            <input type="range" id="sizeSlider" min="30" max="75" value="44" oninput="changeMarkerSize(this.value)">
+                        </div>
+
                         <div class="dancer-form">
                             <input type="text" id="dancerNameInput" placeholder="댄서 이름/번호" onkeypress="if(event.key==='Enter') addDancer()">
                             <button class="btn btn-small btn-search" onclick="addDancer()">등록</button>
@@ -331,6 +342,11 @@
         }
     }
 
+    /* 🔍 마커 크기 변경 함수 (CSS 변수를 조절하여 성능 극대화) */
+    function changeMarkerSize(value) {
+        document.documentElement.style.setProperty('--dancer-size', `${value}px`);
+    }
+
     function renderParts() {
         const partTabs = document.getElementById('partTabs');
         partTabs.innerHTML = '';
@@ -400,13 +416,11 @@
         });
     }
 
-    /* 📱 호환성 핵심: 마우스와 모바일 터치를 통합 지원하는 Pointer Events 처리 */
     function bindDragEvent(element, dancerId) {
         element.onpointerdown = function(event) {
             if(event.target.className === 'dancer-delete') return;
             
             event.preventDefault();
-            // 포인터 캡처를 걸어 손가락이 마커 밖으로 나가도 드래그가 유지되도록 설정 (사파리, iOS 필수 크래시 방지)
             element.setPointerCapture(event.pointerId);
             
             const stageFloor = document.getElementById('stageFloor');
