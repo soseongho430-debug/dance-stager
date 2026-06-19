@@ -5,6 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Dance Choreography Finder & Stager (Cloud DB Ver.)</title>
+    <!-- 🔥 Firebase 라이브러리 로드 -->
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
@@ -19,6 +20,8 @@
             --border-color: #333333; 
             --dancer-size: 44px;
         }
+        /* 🛡️ overflow-x: hidden 추가로 Colab iframe 내부 레이어 꼬임 방지 */
+        html, body { overflow-x: hidden; }
         body { background-color: var(--bg-color); color: var(--text-color); font-family: sans-serif; margin: 0; padding: 15px; -webkit-text-size-adjust: 100%; position: relative; }
         .container { max-width: 1200px; margin: 0 auto; }
         header { text-align: center; margin-bottom: 30px; padding-right: 60px; } 
@@ -33,9 +36,9 @@
         .auth-btn:hover { background: var(--accent-color); border-color: var(--accent-color); }
         .user-welcome { font-size: 0.8rem; color: var(--text-muted); font-weight: bold; max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-        /* 📋 오른쪽 슬라이드 바 (사이드바) - 하단 버튼 고정을 위해 flex 구조 적용 */
-        .sidebar { position: fixed; top: 0; right: 0; width: 320px; height: 100%; background-color: var(--card-bg); border-left: 1px solid var(--border-color); z-index: 1500; transform: translateX(100%); transition: transform 0.3s ease; padding: 20px; box-sizing: border-box; display: flex; flex-direction: column; box-shadow: -5px 0 15px rgba(0,0,0,0.5); }
-        .sidebar.open { transform: translateX(0); }
+        /* 📋 오른쪽 슬라이드 바 (사이드바) - visibility 추가로 클릭 차단 버그 해결 */
+        .sidebar { position: fixed; top: 0; right: 0; width: 320px; height: 100%; background-color: var(--card-bg); border-left: 1px solid var(--border-color); z-index: 1500; transform: translateX(100%); visibility: hidden; transition: transform 0.3s ease, visibility 0.3s ease; padding: 20px; box-sizing: border-box; display: flex; flex-direction: column; box-shadow: -5px 0 15px rgba(0,0,0,0.5); }
+        .sidebar.open { transform: translateX(0); visibility: visible; }
         .sidebar-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-color); padding-bottom: 12px; margin-bottom: 20px; flex-shrink: 0; }
         .sidebar-close { font-size: 24px; cursor: pointer; color: var(--text-muted); }
         .sidebar-close:hover { color: var(--accent-color); }
@@ -148,10 +151,13 @@
 </head>
 <body>
 
+<!-- ☰ 상단 우측 고정 버튼 영역 -->
 <div class="top-nav-container">
     <div class="hamburger-menu" onclick="toggleSidebar()">☰</div>
     <div class="auth-status-area" id="authStatusArea">
-        </div>
+        <!-- 🛡️ 파이어베이스 로딩 지연 중에도 버튼이 즉시 보이도록 HTML 기본값으로 배치 -->
+        <button class="auth-btn" onclick="openModal('loginModal')">로그인/회원가입</button>
+    </div>
 </div>
 
 <div class="container">
@@ -161,6 +167,7 @@
     </header>
     
     <main>
+        <!-- 검색 섹션 -->
         <div class="search-section">
             <div class="search-box">
                 <input type="text" id="genreInput" placeholder="춤 장르 입력 (예: K-pop, HipHop)">
@@ -197,6 +204,7 @@
             </div>
         </div>
 
+        <!-- 동선 배치 작업실 -->
         <div class="workspace" id="workspaceContainer">
             <div class="workspace-title">
                 <h2 id="activeVideoTitle" style="margin:0; font-size:1.1rem; max-width:55%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">🎬 동선 제작 중</h2>
@@ -238,22 +246,25 @@
             </div>
         </div>
 
+        <!-- 유튜브 비디오 출력 그리드 -->
         <div class="video-grid" id="videoGrid">
             <div class="status-message">장르를 입력하고 검색을 시작해 주세요!</div>
         </div>
     </main>
 </div>
 
+<!-- 📋 오른쪽 보관함 사이드바 -->
 <div id="projectSidebar" class="sidebar">
     <div class="sidebar-header">
         <h3 class="project-list-title">📁 내 프로젝트 보관함 (Cloud)</h3>
         <span class="sidebar-close" onclick="toggleSidebar()">&times;</span>
     </div>
-    <div id="sidebarContent">
-        </div>
+    <div id="sidebarContent"></div>
+    <!-- 🚪 3줄 메뉴 맨 아래쪽에 배치될 로그아웃 영역 -->
     <div id="sidebarFooter"></div>
 </div>
 
+<!-- 🔍 영상 미리보기 팝업 모달 -->
 <div id="previewModal" class="modal">
     <div class="modal-content video-modal">
         <span class="modal-close" onclick="closePreviewModal()">&times;</span>
@@ -265,6 +276,7 @@
     </div>
 </div>
 
+<!-- 🔐 회원가입 모달 -->
 <div id="signupModal" class="modal">
     <div class="modal-content">
         <span class="modal-close" onclick="closeModal('signupModal')">&times;</span>
@@ -285,6 +297,7 @@
     </div>
 </div>
 
+<!-- 🔓 로그인 모달 -->
 <div id="loginModal" class="modal">
     <div class="modal-content">
         <span class="modal-close" onclick="closeModal('loginModal')">&times;</span>
@@ -313,7 +326,7 @@
         apiKey: "AIzaSyCYsx5aqCssXY1kKjeM2gUXabdl9BlGrLM",
         authDomain: "dance-stager.firebaseapp.com",
         projectId: "dance-stager",
-        storageBucket: "dance-stager.firebasestorage.app"",
+        storageBucket: "dance-stager.firebasestorage.app",
         messagingSenderId: "331703274657",
         appId: "1:331703274657:web:d698b455d8d8bc5cfe74e0"
     };
@@ -334,7 +347,6 @@
     let loggedInUserEmail = null;
     let loggedInUid = null;
 
-    // 실시간 인증 상태 감지 (기기 세션 유지 대응)
     auth.onAuthStateChanged(user => {
         if (user) {
             loggedInUserEmail = user.email;
@@ -347,34 +359,32 @@
     });
 
     /* ================= [🔐 1. Firebase 기반 회원관리 로직] ================= */
-    // 💡 [UI 수정 부분] 로그인/회원가입 단일 버튼화 및 로그아웃 하단 배치
     function updateAuthUI() {
         const authArea = document.getElementById('authStatusArea');
         const sidebarFooter = document.getElementById('sidebarFooter');
         const saveBtn = document.getElementById('saveProjectBtn');
 
+        if (!authArea || !sidebarFooter) return;
+
         if (loggedInUid) {
-            // 로그인 상태: 상단 우측에는 유저 이름만 출력
             authArea.innerHTML = `
                 <span class="user-welcome" title="${loggedInUserEmail}">👤 ${loggedInUserEmail.split('@')[0]}님</span>
             `;
-            // 로그인 상태: 3줄 메뉴(사이드바) 맨 아래쪽에 로그아웃 단추 표시
             sidebarFooter.style.display = 'block';
             sidebarFooter.innerHTML = `
                 <button class="auth-btn" style="width:100%; height:40px; background:#ff4757; border-color:#ff4757;" onclick="processLogout()">로그아웃</button>
             `;
             if (saveBtn) saveBtn.style.display = 'inline-flex';
         } else {
-            // 로그아웃 상태: 상단 우측에 [로그인/회원가입] 단일 단추 출력
             authArea.innerHTML = `
                 <button class="auth-btn" onclick="openModal('loginModal')">로그인/회원가입</button>
             `;
-            // 로그아웃 상태: 사이드바 푸터 숨김
             sidebarFooter.style.display = 'none';
             sidebarFooter.innerHTML = '';
             if (saveBtn) saveBtn.style.display = 'none';
         }
-        if(document.getElementById('projectSidebar').classList.contains('open')) {
+        const sidebar = document.getElementById('projectSidebar');
+        if (sidebar && sidebar.classList.contains('open')) {
             renderSidebarContent();
         }
     }
@@ -391,7 +401,6 @@
         openModal('signupModal');
     }
 
-    // 클라우드 회원가입
     function processSignup() {
         const email = document.getElementById('signupId').value.trim();
         const pw = document.getElementById('signupPw').value;
@@ -406,12 +415,9 @@
                 alert('회원가입 및 클라우드 연동이 완료되었습니다! 자동으로 로그인됩니다.');
                 closeModal('signupModal');
             })
-            .catch(error => {
-                alert('회원가입 실패: ' + error.message);
-            });
+            .catch(error => { alert('회원가입 실패: ' + error.message); });
     }
 
-    // 클라우드 로그인
     function processLogin() {
         const email = document.getElementById('loginId').value.trim();
         const pw = document.getElementById('loginPw').value;
@@ -423,15 +429,14 @@
                 alert('로그인 성공! 대시보드가 실시간 동기화됩니다.');
                 closeModal('loginModal');
             })
-            .catch(error => {
-                alert('로그인 실패: 이메일 또는 비밀번호를 확인하세요.');
-            });
+            .catch(error => { alert('로그인 실패: 이메일 또는 비밀번호를 확인하세요.'); });
     }
 
     function processLogout() {
         auth.signOut().then(() => {
             alert('로그아웃되었습니다. 로컬 세션이 안전하게 종료되었습니다.');
-            toggleSidebar(); // 사이드바 닫기
+            const sidebar = document.getElementById('projectSidebar');
+            if(sidebar) sidebar.classList.remove('open');
             closeWorkspace();
         });
     }
@@ -439,6 +444,7 @@
     /* ================= [📋 2. Cloud Firestore 프로젝트 보관 시스템] ================= */
     function toggleSidebar() {
         const sidebar = document.getElementById('projectSidebar');
+        if (!sidebar) return;
         sidebar.classList.toggle('open');
         if(sidebar.classList.contains('open')) {
             renderSidebarContent();
@@ -447,6 +453,7 @@
 
     function renderSidebarContent() {
         const content = document.getElementById('sidebarContent');
+        if (!content) return;
         if (!loggedInUid) {
             content.innerHTML = `
                 <div style="text-align:center; margin-top:40px; color:var(--text-muted); font-size:0.9rem; line-height:1.6;">
@@ -466,9 +473,7 @@
                 }
 
                 let projects = [];
-                querySnapshot.forEach(doc => {
-                    projects.push({ docId: doc.id, ...doc.data() });
-                });
+                querySnapshot.forEach(doc => { projects.push({ docId: doc.id, ...doc.data() }); });
                 projects.sort((a, b) => (b.serverTime || 0) - (a.serverTime || 0));
 
                 let html = `<div class="project-grid">`;
@@ -490,9 +495,7 @@
                 html += `</div>`;
                 content.innerHTML = html;
             })
-            .catch(err => {
-                content.innerHTML = `<div class="status-message" style="font-size:0.8rem; color:red;">에러: ${err.message}</div>`;
-            });
+            .catch(err => { content.innerHTML = `<div class="status-message" style="font-size:0.8rem; color:red;">에러: ${err.message}</div>`; });
     }
 
     function saveCurrentProject() {
@@ -516,9 +519,7 @@
                 alert('구글 클라우드 데이터베이스(Firestore)에 동선이 안전하게 백업되었습니다!');
                 renderSidebarContent();
             })
-            .catch(err => {
-                alert('클라우드 저장 실패: ' + err.message);
-            });
+            .catch(err => { alert('클라우드 저장 실패: ' + err.message); });
     }
 
     function loadSavedProject(videoId) {
@@ -547,8 +548,7 @@
             .catch(err => alert('삭제 실패: ' + err.message));
     }
 
-
-    /* ================= [🔍 3. 기존 유튜브 검색 및 연동 시스템] ================= */
+    /* ================= [🔍 3. 유튜브 검색 및 연동 시스템] ================= */
     function initialSearch() { nextPageToken = ''; fetchDanceVideos(); }
     function refreshVideos() { fetchDanceVideos(nextPageToken); }
 
@@ -709,8 +709,10 @@
 
     function changeMarkerSize(value) { document.documentElement.style.setProperty('--dancer-size', `${value}px`); }
 
+    // 파트 목록 렌더링
     function renderParts() {
         const partTabs = document.getElementById('partTabs');
+        if (!partTabs) return;
         partTabs.innerHTML = '';
         choreographyData[currentVideoId].parts.forEach((part, index) => {
             const tab = document.createElement('button');
@@ -758,8 +760,10 @@
         renderStage();
     }
 
+    // 스테이지 렌더링
     function renderStage() {
         const stageFloor = document.getElementById('stageFloor');
+        if (!stageFloor) return;
         stageFloor.innerHTML = ''; 
         choreographyData[currentVideoId].parts[choreographyData[currentVideoId].currentPartIndex].dancers.forEach(dancer => {
             const marker = document.createElement('div');
@@ -776,6 +780,7 @@
         });
     }
 
+    // 드래그 앤 드롭 이벤트 바인딩
     function bindDragEvent(element, dancerId) {
         element.onpointerdown = function(event) {
             if(event.target.className === 'dancer-delete') return;
