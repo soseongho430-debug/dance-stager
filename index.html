@@ -7,6 +7,7 @@
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+    <script src="https://www.youtube.com/iframe_api"></script>
     
     <style>
         :root { 
@@ -108,7 +109,7 @@
         .video-side { display: flex; flex-direction: column; gap: 15px; width: 100%; }
         .stage-side { display: flex; flex-direction: column; gap: 15px; width: 100%; }
         .player-container { position: relative; width: 100%; padding-top: 56.25%; border-radius: 8px; overflow: hidden; background: #000; }
-        .player-container iframe { position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: none; }
+        .player-container iframe, .player-container div { position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: none; }
         
         .part-section { background: #1a1a1a; padding: 12px; border-radius: 8px; border: 1px solid var(--border-color); }
         .part-tabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
@@ -210,15 +211,15 @@
             <div class="workspace-layout">
                 <div class="video-side">
                     <div class="player-container">
-                        <iframe id="youtubePlayer" src="" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+                        <div id="youtubePlayer"></div>
                     </div>
                     <button class="btn" id="mirrorBtn" onclick="toggleMirror()" style="background:#2f3542; color:white; width:100%; height:42px; font-size:0.9rem; border:1px solid var(--border-color);">🪞 영상 좌우반전 (Mirror Off)</button>
                     
                     <div class="part-section">
-                        <h3 style="margin-top:0; font-size:1rem; color:var(--accent-color);">📌 파트 시퀀스 타임라인</h3>
+                        <h3 style="margin-top:0; font-size:1rem; color:var(--accent-color);">📌 파트 시퀀스 타임라인 (시간 기준 자동 정렬)</h3>
                         <div class="part-tabs" id="partTabs"></div>
                         <div class="part-controls">
-                            <button class="btn btn-small" style="background:#2f3542; color:white;" onclick="addNewPart()">➕ 파트 추가</button>
+                            <button class="btn btn-small" style="background:#22a6b3; color:white;" onclick="addNewPart()">➕ 현재 시간에 파트 추가</button>
                             <button class="btn btn-small" style="background:#333; color:#ff4757; border:1px solid #444;" onclick="deleteCurrentPart()">🗑️ 삭제</button>
                         </div>
                     </div>
@@ -334,6 +335,11 @@
     
     let loggedInUserEmail = null;
     let loggedInUid = null;
+
+    // 🎬 제어용 글로벌 변수 추가
+    let ytPlayer = null;
+    let timeSyncInterval = null;
+    let isDraggingNow = false; 
 
     auth.onAuthStateChanged(user => {
         if (user) {
@@ -487,7 +493,7 @@
     }
 
     function saveCurrentProject() {
-        if(!loggedInUid) { alert('로그인이 필요한 서비스입니다.'); return; }
+        if(!loggedInUid) { alert('로그인이 필요한 service입니다.'); return; }
         if(!currentVideoId) { alert('저장할 활성화된 프로젝트가 없습니다.'); return; }
 
         const projectTitle = document.getElementById('activeVideoTitle').innerText.replace('🎬 동선 제작 중: ', '');
@@ -647,44 +653,122 @@
         openWorkspace(videoId, videoTitle);
     }
 
+    /* ================= [🕺 4. 유튜브 API 제어 및 실시간 동선 동기화] ================= */
     function openWorkspace(videoId, videoTitle) {
         currentVideoId = videoId;
         document.getElementById('activeVideoTitle').innerText = `🎬 동선 제작 중: ${videoTitle}`;
-        document.getElementById('youtubePlayer').src = `https://www.youtube.com/embed/${videoId}?autoplay=1`;
-        resetMirrorState();
-
-        if (!choreographyData[videoId]) {
-            choreographyData[videoId] = { currentPartIndex: 0, parts: [{ name: "파트 1", dancers: [] }] };
-        }
         
-        // 🛠️ [안전장치] 클라우드 로드 시 currentPartIndex가 유실된 경우를 대비해 0으로 강제 초기화
-        if (choreographyData[videoId].currentPartIndex === undefined || choreographyData[videoId].currentPartIndex === null) {
-            choreographyData[videoId].currentPartIndex = 0;
+        if (timeSyncInterval) clearInterval(timeSyncInterval);
+
+        // 데이터 초기화 및 호환성 보장
+        if (!choreographyData[videoId]) {
+            choreographyData[videoId] = { 
+                currentPartIndex: 0, 
+                parts: [{ name: "파트 1 (0:00)", time: 0, dancers: [] }] 
+            };
+        } else {
+            // 과거 구버전 데이터가 존재할 경우 시간 필드 생성 보정
+            choreographyData[videoId].parts.forEach((part, idx) => {
+                if (part.time === undefined) part.time = idx * 15;
+                if (!part.name.includes('(')) {
+                    const mins = Math.floor(part.time / 60);
+                    const secs = part.time % 60;
+                    part.name = `파트 ${idx + 1} (${mins}:${secs < 10 ? '0' : ''}${secs})`;
+                }
+            });
         }
 
         document.getElementById('workspaceContainer').style.display = 'block';
         document.getElementById('workspaceContainer').scrollIntoView({ behavior: 'smooth' });
+
+        // 유튜브 플레이어 초기화
+        const playerContainer = document.querySelector('.player-container');
+        playerContainer.innerHTML = '<div id="youtubePlayer"></div>';
+
+        ytPlayer = new YT.Player('youtubePlayer', {
+            height: '100%',
+            width: '100%',
+            videoId: videoId,
+            playerVars: {
+                'autoplay': 1,
+                'controls': 1,
+                'rel': 0,
+                'enablejsapi': 1
+            },
+            events: {
+                'onReady': () => { applyMirrorStyle(); startTimeSync(); },
+                'onStateChange': (e) => {
+                    if (e.data === YT.PlayerState.PLAYING) startTimeSync();
+                    else if (timeSyncInterval) clearInterval(timeSyncInterval);
+                }
+            }
+        });
+
         renderParts();
         renderStage();
     }
 
     function closeWorkspace() {
+        if (timeSyncInterval) clearInterval(timeSyncInterval);
         document.getElementById('workspaceContainer').style.display = 'none';
-        document.getElementById('youtubePlayer').src = '';
+        const playerContainer = document.querySelector('.player-container');
+        playerContainer.innerHTML = '<div id="youtubePlayer"></div>';
         currentVideoId = '';
+        ytPlayer = null;
         resetMirrorState();
     }
 
+    // 🕒 실시간 영상 재생 싱크 타이머 실행 함수
+    function startTimeSync() {
+        if (timeSyncInterval) clearInterval(timeSyncInterval);
+        timeSyncInterval = setInterval(() => {
+            if (isDraggingNow) return; // 댄서 마커 이동 편집 중엔 화면 갱신 차단하여 버그 방지
+            if (ytPlayer && typeof ytPlayer.getCurrentTime === 'function') {
+                const currentTime = ytPlayer.getCurrentTime();
+                syncPartWithTime(currentTime);
+            }
+        }, 400);
+    }
+
+    // 🔄 재생 시간에 맞춰 최적의 파트 탭을 자동 활성화
+    function syncPartWithTime(currentTime) {
+        const videoData = choreographyData[currentVideoId];
+        if (!videoData || !videoData.parts) return;
+
+        let matchedIndex = 0;
+        let maxTime = -1;
+
+        videoData.parts.forEach((part, index) => {
+            const partTime = part.time || 0;
+            if (partTime <= currentTime && partTime > maxTime) {
+                maxTime = partTime;
+                matchedIndex = index;
+            }
+        });
+
+        if (matchedIndex !== videoData.currentPartIndex) {
+            videoData.currentPartIndex = matchedIndex;
+            renderParts();
+            renderStage();
+        }
+    }
+
     function toggleMirror() {
-        const player = document.getElementById('youtubePlayer');
-        const mirrorBtn = document.getElementById('mirrorBtn');
         isVideoMirrored = !isVideoMirrored;
+        applyMirrorStyle();
+    }
+
+    function applyMirrorStyle() {
+        const playerElement = document.getElementById('youtubePlayer');
+        const mirrorBtn = document.getElementById('mirrorBtn');
+        if (!playerElement || !mirrorBtn) return;
+        
         if (isVideoMirrored) {
-            player.style.transform = 'scaleX(-1)';
+            playerElement.style.transform = 'scaleX(-1)';
             mirrorBtn.innerText = '🪞 영상 좌우반전 (Mirror On)';
             mirrorBtn.style.background = 'var(--accent-color)';
         } else {
-            player.style.transform = 'scaleX(1)';
+            playerElement.style.transform = 'scaleX(1)';
             mirrorBtn.innerText = '🪞 영상 좌우반전 (Mirror Off)';
             mirrorBtn.style.background = '#2f3542';
         }
@@ -692,13 +776,7 @@
 
     function resetMirrorState() {
         isVideoMirrored = false;
-        const player = document.getElementById('youtubePlayer');
-        const mirrorBtn = document.getElementById('mirrorBtn');
-        if (player && mirrorBtn) {
-            player.style.transform = 'scaleX(1)';
-            mirrorBtn.innerText = '🪞 영상 좌우반전 (Mirror Off)';
-            mirrorBtn.style.background = '#2f3542';
-        }
+        applyMirrorStyle();
     }
 
     function changeMarkerSize(value) { document.documentElement.style.setProperty('--dancer-size', `${value}px`); }
@@ -708,45 +786,55 @@
         const partTabs = document.getElementById('partTabs');
         if (!partTabs) return;
         partTabs.innerHTML = '';
-        
-        const videoData = choreographyData[currentVideoId];
-        if (!videoData) return;
-
-        // 인덱스 바인딩 체크 보강
-        if (videoData.currentPartIndex === undefined || videoData.currentPartIndex === null) {
-            videoData.currentPartIndex = 0;
-        }
-
-        videoData.parts.forEach((part, index) => {
+        choreographyData[currentVideoId].parts.forEach((part, index) => {
             const tab = document.createElement('button');
-            tab.className = `part-tab ${index === videoData.currentPartIndex ? 'active' : ''}`;
+            tab.className = `part-tab ${index === choreographyData[currentVideoId].currentPartIndex ? 'active' : ''}`;
             tab.innerText = part.name;
             tab.onclick = () => {
-                videoData.currentPartIndex = index;
+                // 영상이 일시정지 상태일 때 유저가 클릭해 수동 편집 가능
+                choreographyData[currentVideoId].currentPartIndex = index;
                 renderParts(); renderStage();
             };
             partTabs.appendChild(tab);
         });
     }
 
+    // ➕ 현재 영상 재생 위치에 타임스탬프 파트 생성
     function addNewPart() {
         const videoData = choreographyData[currentVideoId];
-        if (!videoData) return;
-        if (videoData.currentPartIndex === undefined || videoData.currentPartIndex === null) {
-            videoData.currentPartIndex = 0;
+        let currentVideoTime = 0;
+        if (ytPlayer && typeof ytPlayer.getCurrentTime === 'function') {
+            currentVideoTime = Math.floor(ytPlayer.getCurrentTime());
         }
+
         const clonedDancers = JSON.parse(JSON.stringify(videoData.parts[videoData.currentPartIndex].dancers));
-        videoData.parts.push({ name: `파트 ${videoData.parts.length + 1}`, dancers: clonedDancers });
-        videoData.currentPartIndex = videoData.parts.length - 1;
-        renderParts(); renderStage();
+        
+        // 일단 새 항목 추가
+        videoData.parts.push({ 
+            name: `임시 파트`, 
+            time: currentVideoTime, 
+            dancers: clonedDancers 
+        });
+        
+        // 타임스탬프 순서로 정렬 보정
+        videoData.parts.sort((a, b) => (a.time || 0) - (b.time || 0));
+        
+        // 순서 재배치에 맞는 순차적 명칭 업데이트
+        videoData.parts.forEach((part, idx) => {
+            const mins = Math.floor(part.time / 60);
+            const secs = part.time % 60;
+            part.name = `파트 ${idx + 1} (${mins}:${secs < 10 ? '0' : ''}${secs})`;
+        });
+
+        // 현재 추가한 타임스탬프 인덱스 찾아서 활성화
+        videoData.currentPartIndex = videoData.parts.findIndex(p => p.time === currentVideoTime);
+        
+        renderParts(); 
+        renderStage();
     }
 
     function deleteCurrentPart() {
         const videoData = choreographyData[currentVideoId];
-        if (!videoData) return;
-        if (videoData.currentPartIndex === undefined || videoData.currentPartIndex === null) {
-            videoData.currentPartIndex = 0;
-        }
         if (videoData.parts.length <= 1) { alert('최소 1개의 파트는 존재해야 합니다.'); return; }
         if(confirm(`현재 파트를 정말 삭제하시겠습니까?`)) {
             videoData.parts.splice(videoData.currentPartIndex, 1);
@@ -755,45 +843,24 @@
         }
     }
 
-    // 🕺 [핵심 수정] 댄서 마커 추가 로직 예외 처리 보강
+    // 🕺 현재 재생/활성화 중인 파트에 댄서 추가
     function addDancer() {
         const input = document.getElementById('dancerNameInput');
         const dancerName = input.value.trim();
         if(!dancerName) { alert('이름을 입력하세요!'); return; }
         
-        const videoData = choreographyData[currentVideoId];
-        if(!videoData) return;
-
-        // 🛠️ 파트 인덱스가 없으면 0(첫 번째 파트)으로 세팅하는 안전 코드 추가
-        if (videoData.currentPartIndex === undefined || videoData.currentPartIndex === null) {
-            videoData.currentPartIndex = 0;
-        }
-
-        let currentPart = videoData.parts[videoData.currentPartIndex];
-        if (!currentPart) {
-            videoData.currentPartIndex = 0;
-            currentPart = videoData.parts[0];
-        }
-
-        currentPart.dancers.push({
+        // 현재 실행(선택) 중인 파트에 마커 삽입
+        choreographyData[currentVideoId].parts[choreographyData[currentVideoId].currentPartIndex].dancers.push({
             id: Date.now() + Math.random().toString(36).substr(2, 5), name: dancerName, x: 50, y: 50  
         });
-        
         input.value = ''; 
-        renderStage(); // 등록 후 화면 갱신 즉시 트리거
+        renderStage();
     }
 
     function deleteDancer(id) {
-        const videoData = choreographyData[currentVideoId];
-        if (!videoData) return;
-        if (videoData.currentPartIndex === undefined || videoData.currentPartIndex === null) {
-            videoData.currentPartIndex = 0;
-        }
-        const currentPart = videoData.parts[videoData.currentPartIndex];
-        if (currentPart) {
-            currentPart.dancers = currentPart.dancers.filter(dancer => dancer.id !== id);
-            renderStage();
-        }
+        const currentPart = choreographyData[currentVideoId].parts[choreographyData[currentVideoId].currentPartIndex];
+        currentPart.dancers = currentPart.dancers.filter(dancer => dancer.id !== id);
+        renderStage();
     }
 
     // 스테이지 렌더링
@@ -801,19 +868,7 @@
         const stageFloor = document.getElementById('stageFloor');
         if (!stageFloor) return;
         stageFloor.innerHTML = ''; 
-        
-        const videoData = choreographyData[currentVideoId];
-        if (!videoData || !videoData.parts) return;
-
-        // 🛠️ 렌더링 시 안전장치 가동
-        if (videoData.currentPartIndex === undefined || videoData.currentPartIndex === null) {
-            videoData.currentPartIndex = 0;
-        }
-
-        const currentPart = videoData.parts[videoData.currentPartIndex];
-        if (!currentPart || !currentPart.dancers) return;
-
-        currentPart.dancers.forEach(dancer => {
+        choreographyData[currentVideoId].parts[choreographyData[currentVideoId].currentPartIndex].dancers.forEach(dancer => {
             const marker = document.createElement('div');
             marker.className = 'dancer-marker';
             marker.style.left = `${dancer.x}%`; marker.style.top = `${dancer.y}%`;
@@ -834,6 +889,8 @@
             if(event.target.className === 'dancer-delete') return;
             event.preventDefault();
             element.setPointerCapture(event.pointerId);
+            isDraggingNow = true; // ⚠️ 드래그 활성화 표시로 자동 동기화 잠금
+
             const stageFloor = document.getElementById('stageFloor');
             const rect = stageFloor.getBoundingClientRect();
 
@@ -843,12 +900,8 @@
                 percentX = Math.max(0, Math.min(percentX, 100));
                 percentY = Math.max(0, Math.min(percentY, 100));
                 element.style.left = `${percentX}%`; element.style.top = `${percentY}%`;
-                
-                const videoData = choreographyData[currentVideoId];
-                if (videoData) {
-                    const dancer = videoData.parts[videoData.currentPartIndex].dancers.find(d => d.id === dancerId);
-                    if(dancer) { dancer.x = percentX; dancer.y = percentY; }
-                }
+                const dancer = choreographyData[currentVideoId].parts[choreographyData[currentVideoId].currentPartIndex].dancers.find(d => d.id === dancerId);
+                if(dancer) { dancer.x = percentX; dancer.y = percentY; }
             }
 
             function onPointerMove(event) { moveAt(event.clientX, event.clientY); }
@@ -856,6 +909,7 @@
             document.addEventListener('pointerup', function onPointerUp(e) {
                 document.removeEventListener('pointermove', onPointerMove);
                 document.removeEventListener('pointerup', onPointerUp);
+                isDraggingNow = false; // ⚠️ 드래그 비활성화 해제
                 try { element.releasePointerCapture(e.pointerId); } catch(err) {}
             });
         };
